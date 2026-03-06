@@ -124,6 +124,21 @@ class EventsSnapshot:
 
 
 @dataclass
+class PortfolioSnapshot:
+    ticker: str
+    is_held: bool
+    shares: int
+    acquisition_price: Optional[float]
+    acquisition_yield: Optional[float]
+    current_position_weight: Optional[float]
+    sector_weight_now: Optional[float]
+    nisa_flag: bool
+    account_type: str
+    max_position_weight_override: Optional[float]
+    notes: str
+
+
+@dataclass
 class TickerSnapshot:
     ticker: str
     company_name: str
@@ -178,6 +193,17 @@ class TickerSnapshot:
     has_exclude_keyword: bool
     has_caution_keyword: bool
     has_positive_keyword: bool
+
+    is_held: bool
+    shares: int
+    acquisition_price: Optional[float]
+    acquisition_yield: Optional[float]
+    current_position_weight: Optional[float]
+    sector_weight_now: Optional[float]
+    nisa_flag: bool
+    account_type: str
+    max_position_weight_override: Optional[float]
+    notes: str
 
     def has_required_common_fields(self) -> bool:
         required = [
@@ -303,20 +329,45 @@ def load_events_snapshot(path: str) -> dict[str, EventsSnapshot]:
     return items
 
 
+def load_portfolio_snapshot(path: str) -> dict[str, PortfolioSnapshot]:
+    items: dict[str, PortfolioSnapshot] = {}
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            item = PortfolioSnapshot(
+                ticker=row["ticker"].strip(),
+                is_held=parse_bool(row["is_held"]),
+                shares=parse_int(row["shares"]) or 0,
+                acquisition_price=parse_float(row["acquisition_price"]),
+                acquisition_yield=parse_float(row["acquisition_yield"]),
+                current_position_weight=parse_float(row["current_position_weight"]),
+                sector_weight_now=parse_float(row["sector_weight_now"]),
+                nisa_flag=parse_bool(row["nisa_flag"]),
+                account_type=(row.get("account_type") or "").strip(),
+                max_position_weight_override=parse_float(row.get("max_position_weight_override")),
+                notes=(row.get("notes") or "").strip(),
+            )
+            items[item.ticker] = item
+    return items
+
+
 def build_ticker_snapshots(
     master_path: str,
     fundamentals_path: str,
     events_path: str,
+    portfolio_path: Optional[str] = None,
 ) -> List[TickerSnapshot]:
     masters = load_master_watchlist(master_path)
     funds = load_fundamentals_snapshot(fundamentals_path)
     events = load_events_snapshot(events_path)
+    portfolios = load_portfolio_snapshot(portfolio_path) if portfolio_path else {}
 
     snapshots: List[TickerSnapshot] = []
 
     for ticker, m in masters.items():
         f = funds.get(ticker)
         e = events.get(ticker)
+        p = portfolios.get(ticker)
 
         snapshot = TickerSnapshot(
             ticker=m.ticker,
@@ -372,6 +423,17 @@ def build_ticker_snapshots(
             has_exclude_keyword=e.has_exclude_keyword if e else False,
             has_caution_keyword=e.has_caution_keyword if e else False,
             has_positive_keyword=e.has_positive_keyword if e else False,
+
+            is_held=p.is_held if p else False,
+            shares=p.shares if p else 0,
+            acquisition_price=p.acquisition_price if p else None,
+            acquisition_yield=p.acquisition_yield if p else None,
+            current_position_weight=p.current_position_weight if p else None,
+            sector_weight_now=p.sector_weight_now if p else None,
+            nisa_flag=p.nisa_flag if p else False,
+            account_type=p.account_type if p else "",
+            max_position_weight_override=p.max_position_weight_override if p else None,
+            notes=p.notes if p else "",
         )
         snapshots.append(snapshot)
 
